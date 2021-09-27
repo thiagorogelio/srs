@@ -60,10 +60,10 @@ int srs_time_jitter_string2int(std::string time_jitter)
     }
 }
 
-SrsRtmpJitter::SrsRtmpJitter()
+SrsRtmpJitter::SrsRtmpJitter(int64_t last_pkt_time)
 {
     last_pkt_correct_time = -1;
-    last_pkt_time = 0;
+    this->last_pkt_time = last_pkt_time;
 }
 
 SrsRtmpJitter::~SrsRtmpJitter()
@@ -73,7 +73,14 @@ SrsRtmpJitter::~SrsRtmpJitter()
 srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgorithm ag)
 {
     srs_error_t err = srs_success;
-    
+
+    // full jitter algorithm, do jitter correct.
+    // set to 0 for metadata.
+    if (!msg->is_av()) {
+        msg->timestamp = 0;
+        return err;
+    }
+
     // for performance issue
     if (ag != SrsRtmpJitterAlgorithmFULL) {
         // all jitter correct features is disabled, ignore.
@@ -83,11 +90,13 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         
         // start at zero, but donot ensure monotonically increasing.
         if (ag == SrsRtmpJitterAlgorithmZERO) {
-            // for the first time, last_pkt_correct_time is -1.
-            if (last_pkt_correct_time == -1) {
+            if (msg->timestamp > 0){
+                // for the first time, last_pkt_correct_time is -1.
+                if (last_pkt_correct_time == -1 && msg->timestamp < last_pkt_time)
+                    last_pkt_time = msg->timestamp;
                 last_pkt_correct_time = msg->timestamp;
+                msg->timestamp -= last_pkt_time;
             }
-            msg->timestamp -= last_pkt_correct_time;
             return err;
         }
         
@@ -95,12 +104,6 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         return err;
     }
     
-    // full jitter algorithm, do jitter correct.
-    // set to 0 for metadata.
-    if (!msg->is_av()) {
-        msg->timestamp = 0;
-        return err;
-    }
     
     /**
      * we use a very simple time jitter detect/correct algorithm:
@@ -114,8 +117,8 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
      */
     int64_t time = msg->timestamp;
     int64_t delta = time - last_pkt_time;
-    
     // if jitter detected, reset the delta.
+    // This is wrong, delta must be based on fps insted of const values.
     if (delta < CONST_MAX_JITTER_MS_NEG || delta > CONST_MAX_JITTER_MS) {
         // use default 10ms to notice the problem of stream.
         // @see https://github.com/ossrs/srs/issues/425
@@ -123,7 +126,6 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
     }
     
     last_pkt_correct_time = srs_max(0, last_pkt_correct_time + delta);
-    
     msg->timestamp = last_pkt_correct_time;
     last_pkt_time = time;
     
@@ -255,7 +257,6 @@ srs_error_t SrsMessageQueue::enqueue(SrsSharedPtrMessage* msg, bool* is_overflow
     srs_error_t err = srs_success;
 
     msgs.push_back(msg);
-    
     if (msg->is_av()) {
         if (av_start_time == -1) {
             av_start_time = srs_utime_t(msg->timestamp * SRS_UTIME_MILLISECONDS);
