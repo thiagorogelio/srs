@@ -86,8 +86,12 @@ srs_error_t SrsDvrSegmenter::open()
     }
     
     // create jitter.
-    srs_freep(jitter);
-    jitter = new SrsRtmpJitter();
+    int64_t last_pkt_time = -1;
+    if (jitter != NULL)
+        last_pkt_time = jitter->get_time();
+        srs_trace("new jitter last_pkt_time: %d", last_pkt_time);
+    srs_freep(jitter); 
+    jitter = new SrsRtmpJitter(last_pkt_time);
     
     // open file writer, in append or create mode.
     string tmp_dvr_file = fragment->tmppath();
@@ -580,6 +584,7 @@ SrsDvrPlan::SrsDvrPlan()
 SrsDvrPlan::~SrsDvrPlan()
 {
     srs_freep(segment);
+    srs_freep(req);
 }
 
 srs_error_t SrsDvrPlan::initialize(SrsOriginHub* h, SrsDvrSegmenter* s, SrsRequest* r)
@@ -587,7 +592,7 @@ srs_error_t SrsDvrPlan::initialize(SrsOriginHub* h, SrsDvrSegmenter* s, SrsReque
     srs_error_t err = srs_success;
     
     hub = h;
-    req = r;
+    req = r->copy();
     segment = s;
     
     if ((err = segment->initialize(this, r)) != srs_success) {
@@ -878,7 +883,7 @@ srs_error_t SrsDvrSegmentPlan::update_duration(SrsSharedPtrMessage* msg)
     if ((err = hub->on_dvr_request_sh()) != srs_success) {
         return srs_error_wrap(err, "request sh");
     }
-    
+
     return err;
 }
 
