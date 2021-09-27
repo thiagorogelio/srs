@@ -89,7 +89,6 @@ srs_error_t SrsDvrSegmenter::open()
     int64_t last_pkt_time = -1;
     if (jitter != NULL)
         last_pkt_time = jitter->get_time();
-        srs_trace("new jitter last_pkt_time: %d", last_pkt_time);
     srs_freep(jitter); 
     jitter = new SrsRtmpJitter(last_pkt_time);
     
@@ -883,7 +882,6 @@ srs_error_t SrsDvrSegmentPlan::update_duration(SrsSharedPtrMessage* msg)
     if ((err = hub->on_dvr_request_sh()) != srs_success) {
         return srs_error_wrap(err, "request sh");
     }
-
     return err;
 }
 

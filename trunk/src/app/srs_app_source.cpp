@@ -117,7 +117,6 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
      */
     int64_t time = msg->timestamp;
     int64_t delta = time - last_pkt_time;
-
     // if jitter detected, reset the delta.
     // This is wrong, delta must be based on fps insted of const values.
     if (delta < CONST_MAX_JITTER_MS_NEG || delta > CONST_MAX_JITTER_MS) {
@@ -127,7 +126,6 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
     }
     
     last_pkt_correct_time = srs_max(0, last_pkt_correct_time + delta);
-
     msg->timestamp = last_pkt_correct_time;
     last_pkt_time = time;
     
@@ -259,7 +257,6 @@ srs_error_t SrsMessageQueue::enqueue(SrsSharedPtrMessage* msg, bool* is_overflow
     srs_error_t err = srs_success;
 
     msgs.push_back(msg);
-
     if (msg->is_av()) {
         if (av_start_time == -1) {
             av_start_time = srs_utime_t(msg->timestamp * SRS_UTIME_MILLISECONDS);
