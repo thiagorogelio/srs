@@ -86,8 +86,11 @@ srs_error_t SrsDvrSegmenter::open()
     }
     
     // create jitter.
-    srs_freep(jitter);
-    jitter = new SrsRtmpJitter();
+    int64_t last_pkt_time = -1;
+    if (jitter != NULL)
+        last_pkt_time = jitter->get_time();
+    srs_freep(jitter); 
+    jitter = new SrsRtmpJitter(last_pkt_time);
     
     // open file writer, in append or create mode.
     string tmp_dvr_file = fragment->tmppath();

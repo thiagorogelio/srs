@@ -60,10 +60,11 @@ int srs_time_jitter_string2int(std::string time_jitter)
     }
 }
 
-SrsRtmpJitter::SrsRtmpJitter()
+SrsRtmpJitter::SrsRtmpJitter(int64_t last_pkt_time)
 {
     last_pkt_correct_time = -1;
-    last_pkt_time = 0;
+    this->last_pkt_time = last_pkt_time;
+    last_pkt_system_time = srs_get_system_time();
 }
 
 SrsRtmpJitter::~SrsRtmpJitter()
@@ -84,10 +85,13 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         // start at zero, but donot ensure monotonically increasing.
         if (ag == SrsRtmpJitterAlgorithmZERO) {
             // for the first time, last_pkt_correct_time is -1.
-            if (last_pkt_correct_time == -1) {
+            if (msg->timestamp > 0){
+                // for the first time, last_pkt_correct_time is -1.
+                if (last_pkt_correct_time == -1 && msg->timestamp < last_pkt_time)
+                    last_pkt_time = msg->timestamp;
                 last_pkt_correct_time = msg->timestamp;
+                msg->timestamp -= last_pkt_time;
             }
-            msg->timestamp -= last_pkt_correct_time;
             return err;
         }
         
@@ -112,21 +116,25 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
      * 3. last_pkt_correct_time: simply add the positive delta,
      *     and enforce the time monotonically.
      */
-    int64_t time = msg->timestamp;
-    int64_t delta = time - last_pkt_time;
-    
-    // if jitter detected, reset the delta.
-    if (delta < CONST_MAX_JITTER_MS_NEG || delta > CONST_MAX_JITTER_MS) {
-        // use default 10ms to notice the problem of stream.
-        // @see https://github.com/ossrs/srs/issues/425
-        delta = DEFAULT_FRAME_TIME_MS;
+    if (msg->timestamp)
+    {
+        int64_t delta = msg->timestamp - last_pkt_time;
+        int64_t system_delta = (srs_get_system_time() - last_pkt_system_time) / 1000;
+
+        // if jitter detected, reset the delta.
+        if (delta < 0 || abs(delta - system_delta) > CONST_MAX_JITTER_MS) {
+            // use default 10ms to notice the problem of stream.
+            // @see https://github.com/ossrs/srs/issues/425
+            // For now just use system delta
+            delta = system_delta;
+        }
+        
+        last_pkt_correct_time = srs_max(0, last_pkt_correct_time + delta);
+        
+        msg->timestamp = last_pkt_correct_time;
+        last_pkt_time = msg->timestamp;
+        last_pkt_system_time = srs_get_system_time();
     }
-    
-    last_pkt_correct_time = srs_max(0, last_pkt_correct_time + delta);
-    
-    msg->timestamp = last_pkt_correct_time;
-    last_pkt_time = time;
-    
     return err;
 }
 

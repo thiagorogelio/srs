@@ -64,8 +64,9 @@ class SrsRtmpJitter
 private:
     int64_t last_pkt_time;
     int64_t last_pkt_correct_time;
+    int64_t last_pkt_system_time;
 public:
-    SrsRtmpJitter();
+    SrsRtmpJitter(int64_t last_pkt_time=0);
     virtual ~SrsRtmpJitter();
 public:
     // detect the time jitter and correct it.
