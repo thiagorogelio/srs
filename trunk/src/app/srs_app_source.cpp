@@ -84,7 +84,6 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         
         // start at zero, but donot ensure monotonically increasing.
         if (ag == SrsRtmpJitterAlgorithmZERO) {
-            // for the first time, last_pkt_correct_time is -1.
             if (msg->timestamp > 0){
                 // for the first time, last_pkt_correct_time is -1.
                 if (last_pkt_correct_time == -1 && msg->timestamp < last_pkt_time)
@@ -123,7 +122,6 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
 
         // if jitter detected, reset the delta.
         if (delta < 0 || abs(delta - system_delta) > CONST_MAX_JITTER_MS) {
-            // use default 10ms to notice the problem of stream.
             // @see https://github.com/ossrs/srs/issues/425
             // For now just use system delta
             delta = system_delta;
@@ -133,8 +131,8 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         
         msg->timestamp = last_pkt_correct_time;
         last_pkt_time = msg->timestamp;
-        last_pkt_system_time = srs_get_system_time();
     }
+    last_pkt_system_time = srs_get_system_time();
     return err;
 }
 
