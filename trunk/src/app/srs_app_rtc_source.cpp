@@ -1192,7 +1192,7 @@ srs_error_t SrsRtcFromRtmpBridger::package_fu_a(SrsSharedPtrMessage* msg, SrsSam
     uint8_t header = sample->bytes[0];
     uint8_t nal_type = header & kNalTypeMask;
 
-    int num_of_packet = 1 + (sample->size - 1) / fu_payload_size;
+    int num_of_packet = 1 + (nb_left - 1) / fu_payload_size;
     for (int i = 0; i < num_of_packet; ++i) {
         int packet_size = srs_min(nb_left, fu_payload_size);
 
@@ -1715,15 +1715,19 @@ bool SrsRtmpFromRtcBridger::check_frame_complete(const uint16_t start, const uin
     for (uint16_t i = 0; i < cnt; ++i) {
         int index = cache_index((start + i));
         SrsRtpPacket* pkt = cache_video_pkts_[index].pkt;
-        SrsRtpFUAPayload2* fua_payload = dynamic_cast<SrsRtpFUAPayload2*>(pkt->payload());
-        if (fua_payload) {
-            if (fua_payload->start) {
-                ++fu_s_c;
-            }
 
-            if (fua_payload->end) {
-                ++fu_e_c;
-            }
+        // fix crash when pkt->payload() if pkt is nullptr;
+        if (!pkt) continue;
+
+        SrsRtpFUAPayload2* fua_payload = dynamic_cast<SrsRtpFUAPayload2*>(pkt->payload());
+        if (!fua_payload) continue;
+
+        if (fua_payload->start) {
+            ++fu_s_c;
+        }
+
+        if (fua_payload->end) {
+            ++fu_e_c;
         }
     }
 

@@ -583,6 +583,7 @@ SrsDvrPlan::SrsDvrPlan()
 SrsDvrPlan::~SrsDvrPlan()
 {
     srs_freep(segment);
+    srs_freep(req);
 }
 
 srs_error_t SrsDvrPlan::initialize(SrsOriginHub* h, SrsDvrSegmenter* s, SrsRequest* r)
@@ -590,7 +591,7 @@ srs_error_t SrsDvrPlan::initialize(SrsOriginHub* h, SrsDvrSegmenter* s, SrsReque
     srs_error_t err = srs_success;
     
     hub = h;
-    req = r;
+    req = r->copy();
     segment = s;
     
     if ((err = segment->initialize(this, r)) != srs_success) {
@@ -881,7 +882,6 @@ srs_error_t SrsDvrSegmentPlan::update_duration(SrsSharedPtrMessage* msg)
     if ((err = hub->on_dvr_request_sh()) != srs_success) {
         return srs_error_wrap(err, "request sh");
     }
-    
     return err;
 }
 

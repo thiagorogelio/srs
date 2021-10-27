@@ -755,8 +755,12 @@ srs_error_t SrsGoApiStreams::serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessa
         if (!stream) {
             SrsJsonArray* data = SrsJsonAny::array();
             obj->set("streams", data);
-            
-            if ((err = stat->dumps_streams(data)) != srs_success) {
+
+            std::string rstart = r->query_get("start");
+            std::string rcount = r->query_get("count");
+            int start = srs_max(0, atoi(rstart.c_str()));
+            int count = srs_max(10, atoi(rcount.c_str()));
+            if ((err = stat->dumps_streams(data, start, count)) != srs_success) {
                 int code = srs_error_code(err);
                 srs_error_reset(err);
                 return srs_api_response_code(w, r, code);
@@ -836,8 +840,13 @@ srs_error_t SrsGoApiClients::serve_http(ISrsHttpResponseWriter* w, ISrsHttpMessa
             return srs_api_response_code(w, r, ERROR_RTMP_CLIENT_NOT_FOUND);
         }
 
-        client->conn->expire();
-        srs_warn("kickoff client id=%s ok", client_id.c_str());
+        if (client->conn) {
+            client->conn->expire();
+            srs_warn("kickoff client id=%s ok", client_id.c_str());
+        } else {
+            srs_error("kickoff client id=%s error", client_id.c_str());
+            return srs_api_response_code(w, r, SRS_CONSTS_HTTP_BadRequest);
+        }
     } else {
         return srs_go_http_error(w, SRS_CONSTS_HTTP_MethodNotAllowed);
     }

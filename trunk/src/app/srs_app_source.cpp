@@ -74,7 +74,14 @@ SrsRtmpJitter::~SrsRtmpJitter()
 srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgorithm ag)
 {
     srs_error_t err = srs_success;
-    
+
+    // full jitter algorithm, do jitter correct.
+    // set to 0 for metadata.
+    if (!msg->is_av()) {
+        msg->timestamp = 0;
+        return err;
+    }
+
     // for performance issue
     if (ag != SrsRtmpJitterAlgorithmFULL) {
         // all jitter correct features is disabled, ignore.
@@ -98,12 +105,6 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         return err;
     }
     
-    // full jitter algorithm, do jitter correct.
-    // set to 0 for metadata.
-    if (!msg->is_av()) {
-        msg->timestamp = 0;
-        return err;
-    }
     
     /**
      * we use a very simple time jitter detect/correct algorithm:
@@ -261,7 +262,6 @@ srs_error_t SrsMessageQueue::enqueue(SrsSharedPtrMessage* msg, bool* is_overflow
     srs_error_t err = srs_success;
 
     msgs.push_back(msg);
-    
     if (msg->is_av()) {
         if (av_start_time == -1) {
             av_start_time = srs_utime_t(msg->timestamp * SRS_UTIME_MILLISECONDS);
