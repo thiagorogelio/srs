@@ -1318,7 +1318,7 @@ srs_error_t SrsHls::on_video(SrsSharedPtrMessage* shared_video, SrsFormat* forma
     }
     
     // TODO: FIXME: config the jitter of HLS.
-    if ((err = jitter->correct(video, SrsRtmpJitterAlgorithmOFF)) != srs_success) {
+    if ((err = jitter->correct(video, SrsRtmpJitterAlgorithmFULL)) != srs_success) {
         return srs_error_wrap(err, "hls: jitter");
     }
     
