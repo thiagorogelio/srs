@@ -88,8 +88,15 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
                 // for the first time, last_pkt_correct_time is -1.
                 if (last_pkt_correct_time == -1 && msg->timestamp < last_pkt_time)
                     last_pkt_time = msg->timestamp;
+
                 last_pkt_correct_time = msg->timestamp;
                 msg->timestamp -= last_pkt_time;
+
+                // This can happen if the camera resets the counter
+                if (msg->timestamp < 0){
+                    last_pkt_time = last_pkt_correct_time;
+                    msg->timestamp = 0;
+                }
             }
             return err;
         }
