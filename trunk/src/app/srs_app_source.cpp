@@ -62,6 +62,7 @@ int srs_time_jitter_string2int(std::string time_jitter)
 
 SrsRtmpJitter::SrsRtmpJitter(int64_t last_pkt_time)
 {
+    last_valid_timestamp = 0;
     last_pkt_correct_time = -1;
     this->last_pkt_time = last_pkt_time;
     last_pkt_system_time = srs_get_system_time();
@@ -86,17 +87,20 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         if (ag == SrsRtmpJitterAlgorithmZERO) {
             if (msg->timestamp > 0){
                 // for the first time, last_pkt_correct_time is -1.
-                if (last_pkt_correct_time == -1 && msg->timestamp < last_pkt_time)
+                if (last_pkt_correct_time == -1)
                     last_pkt_time = msg->timestamp;
 
                 last_pkt_correct_time = msg->timestamp;
                 msg->timestamp -= last_pkt_time;
 
                 // This can happen if the camera resets the counter
-                if (msg->timestamp < 0){
-                    last_pkt_time = last_pkt_correct_time;
-                    msg->timestamp = 0;
+                if (msg->timestamp < CONST_MAX_JITTER_MS_NEG){
+                    srs_warn("Stream counter reset: %lld", msg->timestamp);
+                    last_pkt_time = last_pkt_correct_time - last_valid_timestamp;
+                    msg->timestamp = last_valid_timestamp;
                 }
+
+                last_valid_timestamp = msg->timestamp;
             }
             return err;
         }

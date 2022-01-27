@@ -65,6 +65,7 @@ private:
     int64_t last_pkt_time;
     int64_t last_pkt_correct_time;
     int64_t last_pkt_system_time;
+    int64_t last_valid_timestamp;
 public:
     SrsRtmpJitter(int64_t last_pkt_time=0);
     virtual ~SrsRtmpJitter();
