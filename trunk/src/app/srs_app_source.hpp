@@ -66,6 +66,7 @@ private:
     int64_t last_pkt_correct_time;
     int64_t last_pkt_system_time;
     int64_t last_valid_timestamp;
+    int64_t avg_delta;
 public:
     SrsRtmpJitter(int64_t last_pkt_time=0);
     virtual ~SrsRtmpJitter();

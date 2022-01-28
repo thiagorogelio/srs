@@ -62,6 +62,7 @@ int srs_time_jitter_string2int(std::string time_jitter)
 
 SrsRtmpJitter::SrsRtmpJitter(int64_t last_pkt_time)
 {
+    avg_delta = 0;
     last_valid_timestamp = 0;
     last_pkt_correct_time = -1;
     this->last_pkt_time = last_pkt_time;
@@ -126,24 +127,26 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
      * 3. last_pkt_correct_time: simply add the positive delta,
      *     and enforce the time monotonically.
      */
+    
+    int64_t now = srsu2ms(srs_get_system_time());
     if (msg->timestamp)
     {
         int64_t delta = msg->timestamp - last_pkt_time;
-        int64_t system_delta = (srs_get_system_time() - last_pkt_system_time) / 1000;
+        int64_t system_delta = now - last_pkt_system_time;
 
         // if jitter detected, reset the delta.
-        if (delta < 0 || abs(delta - system_delta) > CONST_MAX_JITTER_MS) {
+        if (delta < 0 || llabs(delta - system_delta) > CONST_MAX_JITTER_MS) {
             // @see https://github.com/ossrs/srs/issues/425
-            // For now just use system delta
-            delta = system_delta;
-        }
+            delta = avg_delta;
+        } else
+            avg_delta = (avg_delta+delta)/2;
         
         last_pkt_correct_time = srs_max(0, last_pkt_correct_time + delta);
         
-        msg->timestamp = last_pkt_correct_time;
         last_pkt_time = msg->timestamp;
+        msg->timestamp = last_pkt_correct_time;
     }
-    last_pkt_system_time = srs_get_system_time();
+    last_pkt_system_time = now;
     return err;
 }
 
