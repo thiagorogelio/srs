@@ -139,7 +139,7 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
      */
     
     int64_t now = srsu2ms(srs_get_system_time());
-    if (msg->timestamp) 
+    if (msg->timestamp)
     {
         if (!first_pkt_system_time){
             first_pkt_system_time = now;
