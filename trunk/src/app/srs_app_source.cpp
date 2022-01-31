@@ -66,7 +66,9 @@ SrsRtmpJitter::SrsRtmpJitter(int64_t last_pkt_time)
     last_valid_timestamp = 0;
     last_pkt_correct_time = -1;
     this->last_pkt_time = last_pkt_time;
-    last_pkt_system_time = srs_get_system_time();
+    last_pkt_system_time = 0;
+    first_pkt_system_time = 0;
+    n_frames = 0;
 }
 
 SrsRtmpJitter::~SrsRtmpJitter()
@@ -95,6 +97,7 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
                 msg->timestamp -= last_pkt_time;
 
                 // This can happen if the camera resets the counter
+                // ToDo review / improve this code
                 if (msg->timestamp < CONST_MAX_JITTER_MS_NEG){
                     srs_warn("Stream counter reset: %lld", msg->timestamp);
                     last_pkt_time = last_pkt_correct_time - last_valid_timestamp;
@@ -116,7 +119,7 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         msg->timestamp = 0;
         return err;
     }
-    
+
     /**
      * we use a very simple time jitter detect/correct algorithm:
      * 1. delta: ensure the delta is positive and valid,
@@ -126,21 +129,36 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
      *     is used to detect next jitter.
      * 3. last_pkt_correct_time: simply add the positive delta,
      *     and enforce the time monotonically.
+     * 4. avg_delta is the average delta from stream valid timestamps.
+     * 5. system_delta is the delta from system time.
+     *  ( now - last_pkt_system_time)
+     * 6. system_avg_delta is the average delta from system time.
+     *  (total stream time) / number of frames
+     * 7. if the delta don't match the avg_delta or system_delta
+     *  we choose srs_max(avg_delta, system_avg_delta).
      */
     
     int64_t now = srsu2ms(srs_get_system_time());
-    if (msg->timestamp)
+    if (msg->timestamp) 
     {
+        if (!first_pkt_system_time){
+            first_pkt_system_time = now;
+            last_pkt_system_time = now;
+        }
+        n_frames++;
         int64_t delta = msg->timestamp - last_pkt_time;
-        int64_t system_delta = now - last_pkt_system_time;
 
-        // if jitter detected, reset the delta.
-        if (delta < 0 || llabs(delta - system_delta) > CONST_MAX_JITTER_MS) {
-            // @see https://github.com/ossrs/srs/issues/425
-            delta = avg_delta;
+        if (delta < 0 || llabs(delta - avg_delta) > CONST_MAX_JITTER_MS) 
+        {
+            int64_t system_delta = now - last_pkt_system_time;
+            if (delta < 0 || llabs(delta - system_delta) > CONST_MAX_JITTER_MS)
+            {
+                int64_t system_avg_delta = (first_pkt_system_time - last_pkt_system_time) / n_frames;
+                delta = srs_max(avg_delta, system_avg_delta);
+            }
         } else
             avg_delta = (avg_delta+delta)/2;
-        
+
         last_pkt_correct_time = srs_max(0, last_pkt_correct_time + delta);
         
         last_pkt_time = msg->timestamp;
