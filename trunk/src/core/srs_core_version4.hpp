@@ -10,7 +10,5 @@
 #define VERSION_MAJOR       4
 #define VERSION_MINOR       0
 #define VERSION_REVISION    231
-#define CAMERITE_VERSION    1
-#define CAMERITE_VERSION_REVISION 0
 
 #endif
