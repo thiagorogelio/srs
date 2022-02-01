@@ -45,6 +45,8 @@ using namespace srs_internal;
 // @global the version to identify the core.
 const char* _srs_version = "XCORE-" RTMP_SIG_SRS_SERVER;
 
+const char* _camerite_version = "Camerite/" CAMERITE_VERSION;
+
 // when user config an invalid value, macros to perfer true or false.
 #define SRS_CONF_PERFER_FALSE(conf_arg) conf_arg == "on"
 #define SRS_CONF_PERFER_TRUE(conf_arg) conf_arg != "off"
@@ -1979,6 +1981,7 @@ srs_error_t SrsConfig::parse_options(int argc, char** argv)
     }
     
     // first hello message.
+    srs_trace(_camerite_version);
     srs_trace(_srs_version);
 
     // Try config files as bellow:
