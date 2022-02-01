@@ -62,9 +62,13 @@ int srs_time_jitter_string2int(std::string time_jitter)
 
 SrsRtmpJitter::SrsRtmpJitter(int64_t last_pkt_time)
 {
+    avg_delta = 0;
+    last_valid_timestamp = 0;
     last_pkt_correct_time = -1;
     this->last_pkt_time = last_pkt_time;
-    last_pkt_system_time = srs_get_system_time();
+    last_pkt_system_time = 0;
+    first_pkt_system_time = 0;
+    n_frames = 0;
 }
 
 SrsRtmpJitter::~SrsRtmpJitter()
@@ -86,10 +90,21 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         if (ag == SrsRtmpJitterAlgorithmZERO) {
             if (msg->timestamp > 0){
                 // for the first time, last_pkt_correct_time is -1.
-                if (last_pkt_correct_time == -1 && msg->timestamp < last_pkt_time)
+                if (last_pkt_correct_time == -1)
                     last_pkt_time = msg->timestamp;
+
                 last_pkt_correct_time = msg->timestamp;
                 msg->timestamp -= last_pkt_time;
+
+                // This can happen if the camera resets the counter
+                // ToDo review / improve this code
+                if (msg->timestamp < CONST_MAX_JITTER_MS_NEG){
+                    srs_warn("Stream counter reset: %lld", msg->timestamp);
+                    last_pkt_time = last_pkt_correct_time - last_valid_timestamp;
+                    msg->timestamp = last_valid_timestamp;
+                }
+
+                last_valid_timestamp = msg->timestamp;
             }
             return err;
         }
@@ -104,7 +119,7 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         msg->timestamp = 0;
         return err;
     }
-    
+
     /**
      * we use a very simple time jitter detect/correct algorithm:
      * 1. delta: ensure the delta is positive and valid,
@@ -114,25 +129,42 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
      *     is used to detect next jitter.
      * 3. last_pkt_correct_time: simply add the positive delta,
      *     and enforce the time monotonically.
+     * 4. avg_delta is the average delta from stream valid timestamps.
+     * 5. system_delta is the delta from system time.
+     *  ( now - last_pkt_system_time)
+     * 6. system_avg_delta is the average delta from system time.
+     *  (total stream time) / number of frames
+     * 7. if the delta don't match the avg_delta or system_delta
+     *  we choose srs_max(avg_delta, system_avg_delta).
      */
+    
+    int64_t now = srsu2ms(srs_get_system_time());
     if (msg->timestamp)
     {
-        int64_t delta = msg->timestamp - last_pkt_time;
-        int64_t system_delta = (srs_get_system_time() - last_pkt_system_time) / 1000;
-
-        // if jitter detected, reset the delta.
-        if (delta < 0 || abs(delta - system_delta) > CONST_MAX_JITTER_MS) {
-            // @see https://github.com/ossrs/srs/issues/425
-            // For now just use system delta
-            delta = system_delta;
+        if (!first_pkt_system_time){
+            first_pkt_system_time = now;
+            last_pkt_system_time = now;
         }
-        
+        n_frames++;
+        int64_t delta = msg->timestamp - last_pkt_time;
+
+        if (delta < 0 || llabs(delta - avg_delta) > CONST_MAX_JITTER_MS) 
+        {
+            int64_t system_delta = now - last_pkt_system_time;
+            if (delta < 0 || llabs(delta - system_delta) > CONST_MAX_JITTER_MS)
+            {
+                int64_t system_avg_delta = (first_pkt_system_time - last_pkt_system_time) / n_frames;
+                delta = srs_max(avg_delta, system_avg_delta);
+            }
+        } else
+            avg_delta = (avg_delta+delta)/2;
+
         last_pkt_correct_time = srs_max(0, last_pkt_correct_time + delta);
         
-        msg->timestamp = last_pkt_correct_time;
         last_pkt_time = msg->timestamp;
+        msg->timestamp = last_pkt_correct_time;
     }
-    last_pkt_system_time = srs_get_system_time();
+    last_pkt_system_time = now;
     return err;
 }
 
@@ -261,8 +293,11 @@ srs_error_t SrsMessageQueue::enqueue(SrsSharedPtrMessage* msg, bool* is_overflow
     srs_error_t err = srs_success;
 
     msgs.push_back(msg);
-    
-    if (msg->is_av()) {
+
+    // If jitter is off, the timestamp of first sequence header is zero, which wll cause SRS to shrink and drop the
+    // keyframes even if there is not overflow packets in queue, so we must ignore the zero timestamps, please
+    // @see https://github.com/ossrs/srs/pull/2186#issuecomment-953383063
+    if (msg->is_av() && msg->timestamp != 0) {
         if (av_start_time == -1) {
             av_start_time = srs_utime_t(msg->timestamp * SRS_UTIME_MILLISECONDS);
         }
@@ -273,7 +308,7 @@ srs_error_t SrsMessageQueue::enqueue(SrsSharedPtrMessage* msg, bool* is_overflow
     if (max_queue_size <= 0) {
         return err;
     }
-    
+
     while (av_end_time - av_start_time > max_queue_size) {
         // notice the caller queue already overflow and shrinked.
         if (is_overflow) {
@@ -344,8 +379,7 @@ void SrsMessageQueue::shrink()
     SrsSharedPtrMessage* audio_sh = NULL;
     int msgs_size = (int)msgs.size();
     
-    // remove all msg
-    // igone the sequence header
+    // Remove all msgs, mark the sequence headers.
     for (int i = 0; i < (int)msgs.size(); i++) {
         SrsSharedPtrMessage* msg = msgs.at(i);
         
@@ -364,9 +398,10 @@ void SrsMessageQueue::shrink()
     }
     msgs.clear();
     
-    // update av_start_time
+    // Update av_start_time, the start time of queue.
     av_start_time = av_end_time;
-    //push_back secquence header and update timestamp
+
+    // Push back sequence headers and update their timestamps.
     if (video_sh) {
         video_sh->timestamp = srsu2ms(av_end_time);
         msgs.push_back(video_sh);
@@ -1141,7 +1176,8 @@ srs_error_t SrsOriginHub::on_publish()
         return srs_error_wrap(err, "dash publish");
     }
     
-    if ((err = dvr->on_publish()) != srs_success) {
+    // @see https://github.com/ossrs/srs/issues/1613#issuecomment-961657927
+    if ((err = dvr->on_publish(req)) != srs_success) {
         return srs_error_wrap(err, "dvr publish");
     }
     
@@ -1404,7 +1440,7 @@ srs_error_t SrsOriginHub::on_reload_vhost_dvr(string vhost)
     }
     
     // start to publish by new plan.
-    if ((err = dvr->on_publish()) != srs_success) {
+    if ((err = dvr->on_publish(req)) != srs_success) {
         return srs_error_wrap(err, "dvr publish failed");
     }
     
@@ -1715,6 +1751,10 @@ srs_error_t SrsLiveSourceManager::fetch_or_create(SrsRequest* r, ISrsLiveSourceH
     
     SrsLiveSource* source = NULL;
     if ((source = fetch(r)) != NULL) {
+        // we always update the request of resource,
+        // for origin auth is on, the token in request maybe invalid,
+        // and we only need to update the token of request, it's simple.
+        source->update_auth(r);
         *pps = source;
         return err;
     }
@@ -1752,11 +1792,6 @@ SrsLiveSource* SrsLiveSourceManager::fetch(SrsRequest* r)
     }
     
     source = pool[stream_url];
-    
-    // we always update the request of resource,
-    // for origin auth is on, the token in request maybe invalid,
-    // and we only need to update the token of request, it's simple.
-    source->update_auth(r);
     
     return source;
 }

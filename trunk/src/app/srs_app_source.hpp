@@ -65,6 +65,10 @@ private:
     int64_t last_pkt_time;
     int64_t last_pkt_correct_time;
     int64_t last_pkt_system_time;
+    int64_t last_valid_timestamp;
+    int64_t avg_delta;
+    int64_t first_pkt_system_time;
+    int64_t n_frames;
 public:
     SrsRtmpJitter(int64_t last_pkt_time=0);
     virtual ~SrsRtmpJitter();
@@ -78,7 +82,6 @@ public:
 
 #ifdef SRS_PERF_QUEUE_FAST_VECTOR
 // To alloc and increase fixed space, fast remove and insert for msgs sender.
-// @see https://github.com/ossrs/srs/issues/251
 class SrsFastVector
 {
 private:
@@ -178,7 +181,6 @@ private:
     bool should_update_source_id;
 #ifdef SRS_PERF_QUEUE_COND_WAIT
     // The cond wait for mw.
-    // @see https://github.com/ossrs/srs/issues/251
     srs_cond_t mw_wait;
     bool mw_waiting;
     int mw_min_msgs;
@@ -451,9 +453,8 @@ public:
     // @param h the event handler for source.
     // @param pps the matched source, if success never be NULL.
     virtual srs_error_t fetch_or_create(SrsRequest* r, ISrsLiveSourceHandler* h, SrsLiveSource** pps);
-private:
+public:
     // Get the exists source, NULL when not exists.
-    // update the request and return the exists source.
     virtual SrsLiveSource* fetch(SrsRequest* r);
 public:
     // dispose and cycle all sources.
