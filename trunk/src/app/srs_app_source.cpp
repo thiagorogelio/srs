@@ -35,9 +35,10 @@ using namespace std;
 #include <srs_protocol_format.hpp>
 #include <srs_app_rtc_source.hpp>
 
-#define CONST_MAX_JITTER_MS         250
-#define CONST_MAX_JITTER_MS_NEG         -250
-#define DEFAULT_FRAME_TIME_MS         10
+#define CONST_MAX_JITTER_MS         20
+#define DEFAULT_FRAME_TIME_MS       10
+#define MAX_VIDEO_FRAME_RATE        121
+#define MIN_VIDEO_FRAME_DELTA       1000 / MAX_VIDEO_FRAME_RATE
 
 // for 26ms per audio packet,
 // 115 packets is 3s.
@@ -88,7 +89,7 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         
         // start at zero, but donot ensure monotonically increasing.
         if (ag == SrsRtmpJitterAlgorithmZERO) {
-            if (msg->timestamp > 0){
+            if (msg->timestamp){
                 // for the first time, last_pkt_correct_time is -1.
                 if (last_pkt_correct_time == -1)
                     last_pkt_time = msg->timestamp;
@@ -98,13 +99,12 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
 
                 // This can happen if the camera resets the counter
                 // ToDo review / improve this code
-                if (msg->timestamp < CONST_MAX_JITTER_MS_NEG){
-                    srs_warn("Stream counter reset: %lld", msg->timestamp);
-                    last_pkt_time = last_pkt_correct_time - last_valid_timestamp;
-                    msg->timestamp = last_valid_timestamp;
-                }
-
-                last_valid_timestamp = msg->timestamp;
+                // if (msg->timestamp < 0){
+                //     srs_warn("Stream counter reset: %lld", msg->timestamp);
+                //     last_pkt_time = last_pkt_correct_time - last_valid_timestamp;
+                //     msg->timestamp = last_valid_timestamp;
+                // }
+                // last_valid_timestamp = msg->timestamp;
             }
             return err;
         }
@@ -122,9 +122,7 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
 
     /**
      * we use a very simple time jitter detect/correct algorithm:
-     * 1. delta: ensure the delta is positive and valid,
-     *     we set the delta to DEFAULT_FRAME_TIME_MS,
-     *     if the delta of time is nagative or greater than CONST_MAX_JITTER_MS.
+     * 1. delta: ensure the delta is positive and valid
      * 2. last_pkt_time: specifies the original packet time,
      *     is used to detect next jitter.
      * 3. last_pkt_correct_time: simply add the positive delta,
@@ -141,25 +139,37 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
     int64_t now = srsu2ms(srs_get_system_time());
     if (msg->timestamp)
     {
+        int MIN_DELTA = 0;
+        if (msg->is_video())
+            MIN_DELTA = MIN_VIDEO_FRAME_DELTA;
+
+        n_frames++;
+
         if (!first_pkt_system_time){
+            last_pkt_time = msg->timestamp;
             first_pkt_system_time = now;
             last_pkt_system_time = now;
+            last_pkt_correct_time = 0;
         }
-        n_frames++;
         int64_t delta = msg->timestamp - last_pkt_time;
 
-        if (delta < 0 || llabs(delta - avg_delta) > CONST_MAX_JITTER_MS) 
+        if (!avg_delta)
+            avg_delta = delta;
+        else
+            avg_delta = (avg_delta+delta)/2;
+
+
+        if (delta < MIN_DELTA || llabs(delta - avg_delta) > CONST_MAX_JITTER_MS) 
         {
             int64_t system_delta = now - last_pkt_system_time;
-            if (delta < 0 || llabs(delta - system_delta) > CONST_MAX_JITTER_MS)
+            if (delta < MIN_DELTA || llabs(delta - system_delta) > CONST_MAX_JITTER_MS)
             {
                 int64_t system_avg_delta = (first_pkt_system_time - last_pkt_system_time) / n_frames;
                 delta = srs_max(avg_delta, system_avg_delta);
             }
-        } else
-            avg_delta = (avg_delta+delta)/2;
+        }
 
-        last_pkt_correct_time = srs_max(0, last_pkt_correct_time + delta);
+        last_pkt_correct_time += delta;
         
         last_pkt_time = msg->timestamp;
         msg->timestamp = last_pkt_correct_time;
