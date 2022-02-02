@@ -155,6 +155,9 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
 
         if (!avg_delta)
             avg_delta = delta;
+        else
+            avg_delta = (avg_delta+delta)/2;
+
 
         if (delta < MIN_DELTA || llabs(delta - avg_delta) > CONST_MAX_JITTER_MS) 
         {
@@ -164,8 +167,7 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
                 int64_t system_avg_delta = (first_pkt_system_time - last_pkt_system_time) / n_frames;
                 delta = srs_max(avg_delta, system_avg_delta);
             }
-        } else
-            avg_delta = (avg_delta+delta)/2;
+        }
 
         last_pkt_correct_time += delta;
         
