@@ -35,10 +35,11 @@ using namespace std;
 #include <srs_protocol_format.hpp>
 #include <srs_app_rtc_source.hpp>
 
-#define CONST_MAX_JITTER_MS         20
+#define MAX_DELTAS_ERR              30
 #define DEFAULT_FRAME_TIME_MS       10
 #define MAX_VIDEO_FRAME_RATE        121
 #define MIN_VIDEO_FRAME_DELTA       1000 / MAX_VIDEO_FRAME_RATE
+#define MAX_DELTA                   2000 // 0.5 fps
 
 // for 26ms per audio packet,
 // 115 packets is 3s.
@@ -159,16 +160,19 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
             avg_delta = (avg_delta+delta)/2;
 
 
-        if (delta < MIN_DELTA || llabs(delta - avg_delta) > CONST_MAX_JITTER_MS) 
+        if (delta < MIN_DELTA || delta > MAX_DELTA || llabs(delta - avg_delta) > MAX_DELTAS_ERR) 
         {
             int64_t system_delta = now - last_pkt_system_time;
-            if (delta < MIN_DELTA || llabs(delta - system_delta) > CONST_MAX_JITTER_MS)
+            if (delta < MIN_DELTA || delta > MAX_DELTA || llabs(delta - system_delta) > MAX_DELTAS_ERR)
             {
                 int64_t system_avg_delta = (first_pkt_system_time - last_pkt_system_time) / n_frames;
                 delta = srs_max(avg_delta, system_avg_delta);
+                if (delta > MAX_DELTA)
+                    delta = srs_min(avg_delta, system_avg_delta);
             }
         }
 
+        // Could this overflow?
         last_pkt_correct_time += delta;
         
         last_pkt_time = msg->timestamp;
