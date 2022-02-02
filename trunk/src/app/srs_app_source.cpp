@@ -143,12 +143,18 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         if (msg->is_video())
             MIN_DELTA = MIN_VIDEO_FRAME_DELTA;
 
+        n_frames++;
+
         if (!first_pkt_system_time){
+            last_pkt_time = msg->timestamp;
             first_pkt_system_time = now;
             last_pkt_system_time = now;
+            last_pkt_correct_time = 0;
         }
-        n_frames++;
         int64_t delta = msg->timestamp - last_pkt_time;
+
+        if (!avg_delta)
+            avg_delta = delta;
 
         if (delta < MIN_DELTA || llabs(delta - avg_delta) > CONST_MAX_JITTER_MS) 
         {
