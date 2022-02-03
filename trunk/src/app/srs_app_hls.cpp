@@ -1205,6 +1205,8 @@ void SrsHls::on_unpublish()
         srs_warn("hls: ignore unpublish failed %s", srs_error_desc(err).c_str());
         srs_freep(err);
     }
+
+    jitter->reset();
     
     enabled = false;
 }

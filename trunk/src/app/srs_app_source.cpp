@@ -35,11 +35,10 @@ using namespace std;
 #include <srs_protocol_format.hpp>
 #include <srs_app_rtc_source.hpp>
 
-#define MAX_DELTAS_ERR              30
-#define DEFAULT_FRAME_TIME_MS       10
-#define MAX_VIDEO_FRAME_RATE        121
+#define MAX_DELTAS_ERR              100
+#define MAX_VIDEO_FRAME_RATE        65
 #define MIN_VIDEO_FRAME_DELTA       1000 / MAX_VIDEO_FRAME_RATE
-#define MAX_DELTA                   2000 // 0.5 fps
+#define MAX_DELTA                   5000 // 0.1 fps
 
 // for 26ms per audio packet,
 // 115 packets is 3s.
@@ -63,6 +62,17 @@ int srs_time_jitter_string2int(std::string time_jitter)
 }
 
 SrsRtmpJitter::SrsRtmpJitter(int64_t last_pkt_time)
+{
+    avg_delta = 0;
+    last_valid_timestamp = 0;
+    last_pkt_correct_time = -1;
+    this->last_pkt_time = last_pkt_time;
+    last_pkt_system_time = 0;
+    first_pkt_system_time = 0;
+    n_frames = 0;
+}
+
+void SrsRtmpJitter::reset()
 {
     avg_delta = 0;
     last_valid_timestamp = 0;
@@ -144,32 +154,42 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
         if (msg->is_video())
             MIN_DELTA = MIN_VIDEO_FRAME_DELTA;
 
-        n_frames++;
-
-        if (!first_pkt_system_time){
+        if (!n_frames){
             last_pkt_time = msg->timestamp;
             first_pkt_system_time = now;
             last_pkt_system_time = now;
             last_pkt_correct_time = 0;
         }
+        n_frames++;
+
         int64_t delta = msg->timestamp - last_pkt_time;
 
-        if (!avg_delta)
+        if (!avg_delta && delta < MAX_DELTA){
             avg_delta = delta;
+            first_pkt_system_time = now;
+            n_frames = 1;
+        }
+
         else
             avg_delta = (avg_delta+delta)/2;
 
 
-        if (delta < MIN_DELTA || delta > MAX_DELTA || llabs(delta - avg_delta) > MAX_DELTAS_ERR) 
+        if (llabs(delta - avg_delta) > MAX_DELTAS_ERR) 
         {
             int64_t system_delta = now - last_pkt_system_time;
-            if (delta < MIN_DELTA || delta > MAX_DELTA || llabs(delta - system_delta) > MAX_DELTAS_ERR)
+            if (llabs(delta - system_delta) > MAX_DELTAS_ERR)
             {
-                int64_t system_avg_delta = (first_pkt_system_time - last_pkt_system_time) / n_frames;
+                int64_t system_avg_delta = (now - first_pkt_system_time) / n_frames;
                 delta = srs_max(avg_delta, system_avg_delta);
-                if (delta > MAX_DELTA)
-                    delta = srs_min(avg_delta, system_avg_delta);
             }
+        }
+        
+        if (delta > MAX_DELTA){
+            delta = srs_min(avg_delta, MAX_DELTA);
+        }
+
+        if (delta < MIN_DELTA){
+            delta = srs_max(avg_delta, MIN_DELTA);
         }
 
         // Could this overflow?
