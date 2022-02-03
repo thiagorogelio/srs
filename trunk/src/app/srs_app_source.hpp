@@ -71,6 +71,7 @@ private:
     int64_t n_frames;
 public:
     SrsRtmpJitter(int64_t last_pkt_time=0);
+    void reset();
     virtual ~SrsRtmpJitter();
 public:
     // detect the time jitter and correct it.
