@@ -38,7 +38,7 @@ using namespace std;
 #define MAX_DELTAS_ERR              100
 #define MAX_VIDEO_FRAME_RATE        65
 #define MIN_VIDEO_FRAME_DELTA       1000 / MAX_VIDEO_FRAME_RATE
-#define MAX_DELTA                   5000 // 0.1 fps
+#define MAX_DELTA                   5000 // 0.2 fps
 
 // for 26ms per audio packet,
 // 115 packets is 3s.
@@ -183,13 +183,13 @@ srs_error_t SrsRtmpJitter::correct(SrsSharedPtrMessage* msg, SrsRtmpJitterAlgori
                 delta = srs_max(avg_delta, system_avg_delta);
             }
         }
-        
-        if (delta > MAX_DELTA){
-            delta = srs_min(avg_delta, MAX_DELTA);
-        }
 
         if (delta < MIN_DELTA){
             delta = srs_max(avg_delta, MIN_DELTA);
+        }
+
+        if (delta > MAX_DELTA){
+            delta = srs_min(avg_delta, MAX_DELTA);
         }
 
         // Could this overflow?
